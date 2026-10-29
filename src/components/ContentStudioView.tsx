@@ -18,8 +18,26 @@ import {
   Bookmark, 
   MessageCircle,
   Copy,
-  Check
+  Check,
+  FileText,
+  RotateCcw,
+  Download,
+  FileCode,
+  X,
+  Tag
 } from 'lucide-react';
+import { 
+  generateCleanMarkdown, 
+  sanitizeMarkdownFilename, 
+  triggerFileDownload 
+} from '../dsh/markdownExporter';
+import { 
+  PresetDraftTag, 
+  PRESET_DRAFT_TAGS, 
+  PRESET_TAG_KEYS, 
+  getTagMeta, 
+  toggleDraftTag 
+} from '../dsh/engine';
 
 interface ContentStudioProps {
   currentDraft: ContentDraft;
@@ -27,6 +45,13 @@ interface ContentStudioProps {
   onUpdateDraft: (updated: Partial<ContentDraft>) => void;
   onSendToQualityGate: () => void;
   onAskCopilotToRefine: (instruction: string) => void;
+  drafts?: ContentDraft[];
+  currentDraftIndex?: number;
+  onSelectDraftIndex?: (index: number) => void;
+  onCreateNewDraft?: () => void;
+  lastSavedAt?: string | null;
+  autoSaveStatus?: 'saved' | 'saving' | 'idle';
+  onManualSave?: () => void;
 }
 
 export const ContentStudioView: React.FC<ContentStudioProps> = ({
@@ -34,17 +59,59 @@ export const ContentStudioView: React.FC<ContentStudioProps> = ({
   personas,
   onUpdateDraft,
   onSendToQualityGate,
-  onAskCopilotToRefine
+  onAskCopilotToRefine,
+  drafts,
+  currentDraftIndex = 0,
+  onSelectDraftIndex,
+  onCreateNewDraft,
+  lastSavedAt,
+  autoSaveStatus = 'saved',
+  onManualSave
 }) => {
   const [copied, setCopied] = useState(false);
+  const [copiedMarkdown, setCopiedMarkdown] = useState(false);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [activePreviewMode, setActivePreviewMode] = useState<'mobile' | 'storyboard'>('mobile');
+  const [customTagInput, setCustomTagInput] = useState('');
   
   const currentPersona = personas.find(p => p.id === currentDraft.personaId) || personas[0];
+  const markdownContent = generateCleanMarkdown(currentDraft, currentPersona);
+  const markdownFilename = sanitizeMarkdownFilename(currentDraft.title, currentDraft.platform);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(`${currentDraft.title}\n\n${currentDraft.content}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleToggleTag = (tag: string) => {
+    const nextTags = toggleDraftTag(currentDraft.tags, tag);
+    onUpdateDraft({ tags: nextTags });
+  };
+
+  const handleAddCustomTag = () => {
+    const trimmed = customTagInput.trim().replace(/^#/, '');
+    if (!trimmed) return;
+    if (!(currentDraft.tags || []).includes(trimmed)) {
+      const nextTags = [...(currentDraft.tags || []), trimmed];
+      onUpdateDraft({ tags: nextTags });
+    }
+    setCustomTagInput('');
+  };
+
+  const handleExportMarkdown = () => {
+    const success = triggerFileDownload(markdownFilename, markdownContent);
+    if (success) {
+      setExportNotice(markdownFilename);
+      setTimeout(() => setExportNotice(null), 3500);
+    }
+  };
+
+  const handleCopyMarkdown = () => {
+    navigator.clipboard.writeText(markdownContent);
+    setCopiedMarkdown(true);
+    setTimeout(() => setCopiedMarkdown(false), 2000);
   };
 
   const addStoryboardSlide = () => {
@@ -78,6 +145,82 @@ export const ContentStudioView: React.FC<ContentStudioProps> = ({
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       {/* Left Column: Comprehensive Content Editor */}
       <div className="lg:col-span-7 space-y-5">
+        {/* Multi-Draft Switcher Bar */}
+        {drafts && drafts.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-full">
+              <span className="text-xs font-semibold text-slate-500 flex items-center gap-1 shrink-0 mr-1">
+                <FileText className="w-3.5 h-3.5 text-slate-400" />
+                草稿箱 ({drafts.length})：
+              </span>
+              {drafts.map((d, idx) => (
+                <button
+                  key={d.id}
+                  onClick={() => onSelectDraftIndex && onSelectDraftIndex(idx)}
+                  className={`px-3 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer truncate max-w-[180px] flex items-center gap-1.5 ${
+                    idx === currentDraftIndex
+                      ? 'bg-slate-900 text-white shadow-2xs font-semibold'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                  }`}
+                  title={`${d.title || '未命名草稿'}${d.tags && d.tags.length > 0 ? ` [${d.tags.join(', ')}]` : ''}`}
+                >
+                  {d.tags && d.tags.length > 0 && (
+                    <span className="flex items-center gap-0.5 shrink-0">
+                      {d.tags.slice(0, 2).map((t) => {
+                        const meta = getTagMeta(t);
+                        return (
+                          <span
+                            key={t}
+                            className={`w-1.5 h-1.5 rounded-full ${meta.dotClass}`}
+                            title={t}
+                          />
+                        );
+                      })}
+                    </span>
+                  )}
+                  <span className="truncate">
+                    {d.title ? (d.title.length > 10 ? `${d.title.slice(0, 10)}...` : d.title) : `草稿 ${idx + 1}`}
+                  </span>
+                </button>
+              ))}
+              {onCreateNewDraft && (
+                <button
+                  onClick={onCreateNewDraft}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-dashed border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-900 flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                  title="新建空白草稿"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>新建</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>{autoSaveStatus === 'saving' ? '正在保存...' : `已自动保存 ${lastSavedAt || ''}`}</span>
+              </span>
+              {onManualSave && (
+                <button
+                  onClick={onManualSave}
+                  className="text-xs text-slate-500 hover:text-slate-900 font-medium px-1.5 py-0.5 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="强制立即同步当前修改至本地存储"
+                >
+                  立即存盘
+                </button>
+              )}
+              <button
+                onClick={handleExportMarkdown}
+                className="text-xs text-emerald-700 hover:text-emerald-900 font-medium px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer flex items-center gap-1"
+                title={`将当前草稿导出为 Markdown 文件 (${markdownFilename})`}
+              >
+                <Download className="w-3 h-3 text-emerald-600" />
+                <span>导出 .md</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Editor Controls Bar */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -188,6 +331,86 @@ export const ContentStudioView: React.FC<ContentStudioProps> = ({
             />
           </div>
 
+          {/* Tagging System Bar */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-slate-500" />
+                <span>分类标签 (Tags)</span>
+              </label>
+              <span className="text-[11px] text-slate-400">点击标签切换，多维度分类草稿并同步侧边栏展示</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {PRESET_TAG_KEYS.map((key) => {
+                const meta = PRESET_DRAFT_TAGS[key];
+                const isSelected = (currentDraft.tags || []).includes(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => handleToggleTag(key)}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      isSelected
+                        ? meta.activeClass
+                        : `${meta.bgLightClass} ${meta.textClass} ${meta.borderClass} hover:opacity-85`
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : meta.dotClass}`} />
+                    <span>{meta.name}</span>
+                    {isSelected && <Check className="w-3 h-3 ml-0.5" />}
+                  </button>
+                );
+              })}
+
+              {/* Custom tags */}
+              {(currentDraft.tags || [])
+                .filter(t => !PRESET_TAG_KEYS.includes(t as PresetDraftTag))
+                .map(customTag => (
+                  <span
+                    key={customTag}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-100 text-slate-700 border border-slate-200"
+                  >
+                    <span>#{customTag}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleTag(customTag)}
+                      className="text-slate-400 hover:text-rose-600 cursor-pointer p-0.5"
+                      title="移除标签"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+
+              {/* Add custom tag input */}
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={customTagInput}
+                  onChange={e => setCustomTagInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCustomTag();
+                    }
+                  }}
+                  placeholder="+ 自定义标签..."
+                  className="px-2.5 py-1 text-xs border border-dashed border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 w-28 focus:w-36 transition-all"
+                />
+                {customTagInput.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleAddCustomTag}
+                    className="px-2 py-1 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-xs font-medium cursor-pointer transition-colors"
+                  >
+                    添加
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
               <span>封面焦点文案 / 黄金前3秒第一句 (Hook)</span>
@@ -223,14 +446,37 @@ export const ContentStudioView: React.FC<ContentStudioProps> = ({
           </div>
 
           {/* Action Row */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
-            <button
-              onClick={handleCopy}
-              className="px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? '已复制全文' : '复制图文文本'}</span>
-            </button>
+          <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleCopy}
+                className="px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+                title="复制纯文本格式到剪贴板"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copied ? '已复制文本' : '复制正文'}</span>
+              </button>
+
+              <button
+                onClick={handleExportMarkdown}
+                data-testid="export-markdown-btn"
+                className="px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title={`下载格式规范的 Markdown 文档 (${markdownFilename})`}
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-700" />
+                <span>导出 Markdown (.md)</span>
+              </button>
+
+              <button
+                onClick={() => setIsPreviewModalOpen(true)}
+                data-testid="preview-markdown-btn"
+                className="px-2.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+                title="在线预览或复制代码格式的 Markdown 文档"
+              >
+                <FileCode className="w-3.5 h-3.5 text-slate-500" />
+                <span className="hidden sm:inline">预览源码</span>
+              </button>
+            </div>
 
             <button
               onClick={onSendToQualityGate}
@@ -240,6 +486,30 @@ export const ContentStudioView: React.FC<ContentStudioProps> = ({
               <span>送审质量门禁 (Quality Gate)</span>
             </button>
           </div>
+
+          {/* Export Toast Banner */}
+          {exportNotice && (
+            <div 
+              role="alert"
+              className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div>
+                  <span className="font-semibold">已成功导出 Markdown 文件：</span>
+                  <span className="font-mono underline ml-1">{exportNotice}</span>
+                  <span className="text-emerald-700 ml-2">已触发本地文件下载，支持在 Obsidian / Notion / VS Code 中无缝打开</span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setExportNotice(null)}
+                className="text-emerald-500 hover:text-emerald-800 cursor-pointer p-0.5"
+                aria-label="关闭导出提示"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Visual Storyboard & Carousel Deck */}
@@ -426,6 +696,86 @@ export const ContentStudioView: React.FC<ContentStudioProps> = ({
           </p>
         </div>
       </div>
+
+      {/* Markdown Export & Preview Modal */}
+      {isPreviewModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="markdown-modal-title"
+        >
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
+                  <FileCode className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 id="markdown-modal-title" className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <span>草稿 Markdown 源码与本地导出</span>
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-normal">
+                      {markdownFilename}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    规范包含 YAML 前置元数据、黄金钩子、分镜大纲与风格约束，兼容各类主流笔记软件
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsPreviewModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 p-1.5 rounded-lg transition-colors cursor-pointer"
+                aria-label="关闭预览弹窗"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body / Markdown Text Container */}
+            <div className="p-5 overflow-y-auto flex-1 font-mono text-xs bg-slate-900 text-slate-100 leading-relaxed selection:bg-emerald-500 selection:text-white">
+              <pre className="whitespace-pre-wrap break-words">{markdownContent}</pre>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="text-slate-500 flex items-center gap-2">
+                <span>文件大小：约 {(new Blob([markdownContent]).size / 1024).toFixed(1)} KB</span>
+                <span aria-hidden="true">·</span>
+                <span>字数：{markdownContent.length} 字符</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCopyMarkdown}
+                  className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-medium transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                >
+                  {copiedMarkdown ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-700 font-semibold">已复制 Markdown</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                      <span>复制源码</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    handleExportMarkdown();
+                  }}
+                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>立即下载 .md 文件</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

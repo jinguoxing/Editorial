@@ -11,7 +11,13 @@ import {
   parsePluginCommand,
   validateSocialAccount,
   filterSocialAccounts,
-  calculateAccountStats
+  calculateAccountStats,
+  loadDraftsFromStorage,
+  sanitizeDraftIndex,
+  serializeDraftsForStorage,
+  toggleDraftTag,
+  filterDraftsByTag,
+  getDraftTagCounts
 } from './engine.ts';
 
 test('auditContentQuality flags dangerous advertising law violations', () => {
@@ -149,4 +155,94 @@ test('filterSocialAccounts filters by query, platform, and authStatus', () => {
   assert.equal(stats.unauthenticated, 1);
   assert.equal(stats.totalFollowers, 251000);
 });
+
+test('loadDraftsFromStorage recovers valid drafts and falls back safely', () => {
+  const fallback = [{ id: 'd-1', content: '默认内容', title: '草稿1' }];
+
+  // Null or empty string returns fallback
+  assert.deepEqual(loadDraftsFromStorage(null, fallback), fallback);
+  assert.deepEqual(loadDraftsFromStorage('', fallback), fallback);
+
+  // Corrupted JSON returns fallback
+  assert.deepEqual(loadDraftsFromStorage('{bad_json', fallback), fallback);
+
+  // Empty array returns fallback
+  assert.deepEqual(loadDraftsFromStorage('[]', fallback), fallback);
+
+  // Valid draft JSON recovers correctly
+  const saved = [
+    { id: 'd-saved-1', title: '小红书爆款标题', content: '这是用户编辑过的正文内容，自动保存成功！' }
+  ];
+  const serialized = serializeDraftsForStorage(saved);
+  const loaded = loadDraftsFromStorage(serialized, fallback);
+  assert.equal(loaded.length, 1);
+  assert.equal(loaded[0].id, 'd-saved-1');
+  assert.equal(loaded[0].content, '这是用户编辑过的正文内容，自动保存成功！');
+});
+
+test('sanitizeDraftIndex keeps index bounded and valid', () => {
+  assert.equal(sanitizeDraftIndex(undefined, 3), 0);
+  assert.equal(sanitizeDraftIndex(null, 3), 0);
+  assert.equal(sanitizeDraftIndex(-5, 3), 0);
+  assert.equal(sanitizeDraftIndex(1, 3), 1);
+  assert.equal(sanitizeDraftIndex(2, 3), 2);
+  assert.equal(sanitizeDraftIndex(99, 3), 2);
+  assert.equal(sanitizeDraftIndex(0, 0), 0);
+});
+
+test('toggleDraftTag adds, removes, and deduplicates tags correctly', () => {
+  const initial: string[] = ['Inspiration'];
+  
+  // Adding Commercial tag
+  const step1 = toggleDraftTag(initial, 'Commercial');
+  assert.deepEqual(step1, ['Inspiration', 'Commercial']);
+
+  // Adding Review Needed
+  const step2 = toggleDraftTag(step1, 'Review Needed');
+  assert.deepEqual(step2, ['Inspiration', 'Commercial', 'Review Needed']);
+
+  // Removing Inspiration
+  const step3 = toggleDraftTag(step2, 'Inspiration');
+  assert.deepEqual(step3, ['Commercial', 'Review Needed']);
+
+  // Empty string does not mutate
+  const step4 = toggleDraftTag(step3, '  ');
+  assert.deepEqual(step4, ['Commercial', 'Review Needed']);
+
+  // Undefined tags handles safely
+  const step5 = toggleDraftTag(undefined, 'Personal');
+  assert.deepEqual(step5, ['Personal']);
+});
+
+test('filterDraftsByTag filters drafts by category correctly', () => {
+  const mockDrafts = [
+    { id: '1', tags: ['Inspiration', 'Review Needed'] },
+    { id: '2', tags: ['Commercial'] },
+    { id: '3', tags: ['Personal', 'Inspiration'] },
+    { id: '4', tags: [] }
+  ];
+
+  assert.equal(filterDraftsByTag(mockDrafts, 'all').length, 4);
+  assert.equal(filterDraftsByTag(mockDrafts, 'Inspiration').length, 2);
+  assert.equal(filterDraftsByTag(mockDrafts, 'Commercial').length, 1);
+  assert.equal(filterDraftsByTag(mockDrafts, 'Review Needed').length, 1);
+  assert.equal(filterDraftsByTag(mockDrafts, 'Personal').length, 1);
+  assert.equal(filterDraftsByTag(mockDrafts, 'Nonexistent').length, 0);
+});
+
+test('getDraftTagCounts accurately summarizes category distributions', () => {
+  const mockDrafts = [
+    { id: '1', tags: ['Inspiration', 'Review Needed'] },
+    { id: '2', tags: ['Commercial', 'Review Needed'] },
+    { id: '3', tags: ['Personal'] }
+  ];
+
+  const counts = getDraftTagCounts(mockDrafts);
+  assert.equal(counts.all, 3);
+  assert.equal(counts['Inspiration'], 1);
+  assert.equal(counts['Commercial'], 1);
+  assert.equal(counts['Personal'], 1);
+  assert.equal(counts['Review Needed'], 2);
+});
+
 

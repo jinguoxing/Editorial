@@ -28,6 +28,7 @@ export interface ContentDraft {
   hookStrength: 'excellent' | 'adequate' | 'weak';
   coverText: string;
   storyboard: Array<{ scene: number; visual: string; audioVoiceover: string }>;
+  tags?: string[];
 }
 
 export const INITIAL_PERSONAS: AccountPersona[] = [
@@ -163,10 +164,55 @@ export const INITIAL_DRAFTS: ContentDraft[] = [
 #自媒体干货 #新手自媒体 #内容创作者 #一人团队 #运营SOP`,
     status: 'audited',
     updatedAt: '2026-10-14 17:30',
+    tags: ['Inspiration', 'Review Needed'],
     storyboard: [
       { scene: 1, visual: '高反差黑底白字封面：“为什么天天日更还是0流量？”', audioVoiceover: '普通人做自媒体，为什么90%都死在第1个月？' },
       { scene: 2, visual: '展示日常数据后台曲线图与红绿对比避坑点', audioVoiceover: '很多人拼体力日更，真正差距是这3个底层动作。' },
       { scene: 3, visual: '拆解藏赞比计算公式与行动SOP框架卡片', audioVoiceover: '发完必须做归因，藏赞比大于0.5就值得批量复制。' }
+    ]
+  },
+  {
+    id: 'draft-02',
+    title: '【商单方案】某智能降噪耳机30秒口播脚本与实测',
+    platform: 'douyin',
+    personaId: 'persona-tech',
+    hookStrength: 'excellent',
+    coverText: '戴上它的瞬间，整条街的施工声都消失了？',
+    content: `【前3秒吸睛】戴上它的瞬间，整条街的电钻声和地铁轰鸣直接消失了！
+很多人问我千元内兼顾音质和降噪该选哪款？
+今天不做云评测，直接去最吵的咖啡馆和施工现场实录给你听。
+核心亮点拆解：
+1. 双馈主动降噪深度达48dB，低频噪音过滤95%以上；
+2. 单次续航10小时，搭配充电舱可连用4天；
+3. 人体工学入耳设计，佩戴3小时毫无胀痛感。
+下方小黄车有专属首发粉丝满减券，手慢无！`,
+    status: 'drafting',
+    updatedAt: '2026-10-15 11:20',
+    tags: ['Commercial', 'Review Needed'],
+    storyboard: [
+      { scene: 1, visual: '室外嘈杂马路与戴上耳机的特写画面切换', audioVoiceover: '戴上它的瞬间，世界瞬间安静下来。' },
+      { scene: 2, visual: '分贝仪实测波形图展示降噪效果', audioVoiceover: '实测降噪深度对比，数据不讲假话。' }
+    ]
+  },
+  {
+    id: 'draft-03',
+    title: '北漂第5年：写给20岁自己的几句实话与职场复盘',
+    platform: 'xiaohongshu',
+    personaId: 'persona-lin',
+    hookStrength: 'adequate',
+    coverText: '如果能回到5年前，我绝不会把精力浪费在这3件事上',
+    content: `北漂第5年，从刚毕业住合租隔断间，到如今搭建起自己的自由职业闭环。
+这5年踩过的坑、流过的泪，总结成3句写给过去的实话：
+🌱 1. **拒绝无意义讨好**：职场里真正能救你的，永远是你的不可替代性与专业闭环，而不是陪笑和随叫随到；
+🌱 2. **建立属于自己的资产**：工资只是现金流，技能、人脉和个人IP才是能持续复利的底牌；
+🌱 3. **保护你的注意力**：不要在消耗你的人事物上多看一眼，把精力留给自我迭代。
+祝愿每一位赶路的你，都能在这个春天找到自己的节奏。`,
+    status: 'approved',
+    updatedAt: '2026-10-16 09:45',
+    tags: ['Personal', 'Inspiration'],
+    storyboard: [
+      { scene: 1, visual: '深夜工位咖啡与城市夜景剪影', audioVoiceover: '如果能回到5年前，我想对那个焦虑的女孩说几句心里话。' },
+      { scene: 2, visual: '手写笔记本与成长节点时间轴', audioVoiceover: '时间会淘汰伪勤奋，但不会亏待有目标的坚持。' }
     ]
   }
 ];

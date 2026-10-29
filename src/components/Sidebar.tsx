@@ -17,9 +17,21 @@ import {
   ChevronRight,
   Bot,
   Zap,
-  CheckCircle2
+  CheckCircle2,
+  FileText,
+  Tag,
+  Plus
 } from 'lucide-react';
-import { AccountPersona } from '../dsh/engine';
+import { 
+  AccountPersona, 
+  PresetDraftTag, 
+  PRESET_DRAFT_TAGS, 
+  PRESET_TAG_KEYS, 
+  getTagMeta, 
+  filterDraftsByTag, 
+  getDraftTagCounts 
+} from '../dsh/engine';
+import { ContentDraft } from '../data/mockData';
 
 export type NavTabId = 'trend' | 'studio' | 'gate' | 'persona' | 'attribution' | 'accounts';
 
@@ -33,6 +45,10 @@ interface SidebarProps {
   personas?: AccountPersona[];
   selectedPersonaId?: string;
   onSelectPersona?: (id: string) => void;
+  drafts?: ContentDraft[];
+  currentDraftIndex?: number;
+  onSelectDraftIndex?: (index: number) => void;
+  onCreateNewDraft?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -44,9 +60,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedPersonaRole,
   personas,
   selectedPersonaId,
-  onSelectPersona
+  onSelectPersona,
+  drafts = [],
+  currentDraftIndex = 0,
+  onSelectDraftIndex,
+  onCreateNewDraft
 }) => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string | 'all'>('all');
+
+  const tagCounts = getDraftTagCounts(drafts);
+  const filteredDrafts = filterDraftsByTag(drafts, selectedTagFilter);
 
   useEffect(() => {
     const handleResize = () => {
@@ -217,6 +241,146 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           );
         })}
+
+        {/* Drafts Management Section with Tag Badges & Filters */}
+        <div className="pt-3 mt-2 border-t border-slate-100">
+          <div className="flex items-center justify-between px-3 pb-1.5">
+            <span className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase flex items-center gap-1.5">
+              <FileText className="w-3 h-3 text-slate-400" />
+              <span>草稿管理 Drafts</span>
+              <span className="text-[9px] px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded-full font-mono">
+                {drafts.length}
+              </span>
+            </span>
+            {onCreateNewDraft && (
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateNewDraft();
+                  onSelectTab('studio');
+                  setIsMobileOpen(false);
+                }}
+                className="text-[11px] text-slate-500 hover:text-slate-900 font-medium flex items-center gap-0.5 hover:bg-slate-100 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                title="新建空白草稿"
+              >
+                <Plus className="w-3 h-3" />
+                <span>新建</span>
+              </button>
+            )}
+          </div>
+
+          {/* Tag Filter Pills */}
+          <div className="px-2 pb-2">
+            <div className="flex items-center gap-1 overflow-x-auto py-1 text-[10px] no-scrollbar">
+              <button
+                type="button"
+                onClick={() => setSelectedTagFilter('all')}
+                className={`px-2 py-0.5 rounded-md font-medium shrink-0 transition-colors cursor-pointer ${
+                  selectedTagFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                全部 ({tagCounts.all})
+              </button>
+
+              {PRESET_TAG_KEYS.map((key) => {
+                const meta = PRESET_DRAFT_TAGS[key];
+                const count = tagCounts[key] || 0;
+                const isSelected = selectedTagFilter === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSelectedTagFilter(isSelected ? 'all' : key)}
+                    className={`px-1.5 py-0.5 rounded-md font-medium shrink-0 transition-all cursor-pointer flex items-center gap-1 border ${
+                      isSelected
+                        ? meta.activeClass
+                        : `${meta.bgLightClass} ${meta.textClass} ${meta.borderClass} hover:opacity-85`
+                    }`}
+                  >
+                    <span className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : meta.dotClass}`} />
+                    <span>{key === 'Inspiration' ? '灵感' : key === 'Commercial' ? '商单' : key === 'Personal' ? '个人' : '待审'}</span>
+                    <span className="opacity-80">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Filtered Drafts List in Sidebar */}
+          <div className="space-y-1.5 max-h-56 overflow-y-auto px-1">
+            {filteredDrafts.length === 0 ? (
+              <div className="px-3 py-3 text-center text-slate-400 text-[11px] bg-slate-50/70 rounded-lg">
+                无匹配分类的草稿
+              </div>
+            ) : (
+              filteredDrafts.map((d) => {
+                const originalIndex = drafts.findIndex(item => item.id === d.id);
+                const isCurrent = activeTab === 'studio' && originalIndex === currentDraftIndex;
+
+                return (
+                  <div
+                    key={d.id}
+                    onClick={() => {
+                      if (onSelectDraftIndex && originalIndex >= 0) {
+                        onSelectDraftIndex(originalIndex);
+                      }
+                      onSelectTab('studio');
+                      setIsMobileOpen(false);
+                    }}
+                    className={`w-full text-left p-2 rounded-lg text-xs transition-all cursor-pointer border ${
+                      isCurrent
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                        : 'bg-slate-50/70 hover:bg-slate-100/90 text-slate-800 border-slate-100 hover:border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded shrink-0 ${
+                        isCurrent ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-500 border border-slate-200'
+                      }`}>
+                        {d.platform === 'xiaohongshu' ? '小红书' : d.platform === 'douyin' ? '抖音' : d.platform === 'wechat' ? '公众号' : 'B站'}
+                      </span>
+                      <span className={`text-[10px] font-mono truncate ${isCurrent ? 'text-slate-400' : 'text-slate-400'}`}>
+                        {d.updatedAt ? d.updatedAt.slice(5) : ''}
+                      </span>
+                    </div>
+
+                    <div className={`font-medium line-clamp-1 leading-snug mb-1.5 ${isCurrent ? 'text-white' : 'text-slate-900'}`}>
+                      {d.title || '未命名草稿'}
+                    </div>
+
+                    {/* Tags Pills Displayed in Sidebar Item */}
+                    {d.tags && d.tags.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {d.tags.map((t) => {
+                          const meta = getTagMeta(t);
+                          return (
+                            <span
+                              key={t}
+                              className={`text-[9px] px-1.5 py-0.2 rounded font-medium border flex items-center gap-1 ${
+                                isCurrent
+                                  ? 'bg-slate-800 text-slate-200 border-slate-700'
+                                  : `${meta.badgeClass}`
+                              }`}
+                            >
+                              <span className={`w-1 h-1 rounded-full ${meta.dotClass}`} />
+                              <span>{t}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className={`text-[10px] italic ${isCurrent ? 'text-slate-400' : 'text-slate-400'}`}>
+                        无分类标签
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
 
       {/* AI Copilot & Status Bottom Card */}

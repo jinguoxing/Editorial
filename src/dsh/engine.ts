@@ -482,3 +482,173 @@ export function calculateAccountStats(accounts: SocialAccount[]): AccountStats {
 
   return stats;
 }
+
+/**
+ * LocalStorage serialization and recovery helpers for content drafts
+ */
+export function loadDraftsFromStorage<T extends { id: string; content: string }>(
+  storedJson: string | null,
+  fallback: T[]
+): T[] {
+  if (!storedJson || typeof storedJson !== 'string') {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(storedJson);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const valid = parsed.filter((item): item is T => 
+        Boolean(item && typeof item === 'object' && typeof item.id === 'string' && typeof item.content === 'string')
+      );
+      if (valid.length > 0) {
+        return valid;
+      }
+    }
+  } catch {
+    // Malformed JSON fallback
+  }
+  return fallback;
+}
+
+export function sanitizeDraftIndex(index: number | null | undefined, totalCount: number): number {
+  if (typeof index !== 'number' || isNaN(index)) return 0;
+  if (totalCount <= 0) return 0;
+  if (index < 0) return 0;
+  if (index >= totalCount) return totalCount - 1;
+  return Math.floor(index);
+}
+
+export function serializeDraftsForStorage<T>(drafts: T[]): string {
+  return JSON.stringify(drafts);
+}
+
+/**
+ * Content Draft Tagging System
+ * Categories: 'Inspiration', 'Commercial', 'Personal', 'Review Needed'
+ */
+export type PresetDraftTag = 'Inspiration' | 'Commercial' | 'Personal' | 'Review Needed';
+
+export interface TagMeta {
+  id: string;
+  name: string;
+  colorName: string;
+  badgeClass: string;
+  bgLightClass: string;
+  activeClass: string;
+  borderClass: string;
+  textClass: string;
+  dotClass: string;
+}
+
+export const PRESET_DRAFT_TAGS: Record<PresetDraftTag, TagMeta> = {
+  'Inspiration': {
+    id: 'Inspiration',
+    name: '灵感构思 Inspiration',
+    colorName: 'purple',
+    badgeClass: 'bg-purple-50 text-purple-700 border-purple-200',
+    bgLightClass: 'bg-purple-50',
+    activeClass: 'bg-purple-600 text-white border-purple-600 shadow-xs',
+    borderClass: 'border-purple-200',
+    textClass: 'text-purple-700',
+    dotClass: 'bg-purple-500'
+  },
+  'Commercial': {
+    id: 'Commercial',
+    name: '商单合作 Commercial',
+    colorName: 'amber',
+    badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+    bgLightClass: 'bg-amber-50',
+    activeClass: 'bg-amber-600 text-white border-amber-600 shadow-xs',
+    borderClass: 'border-amber-200',
+    textClass: 'text-amber-700',
+    dotClass: 'bg-amber-500'
+  },
+  'Personal': {
+    id: 'Personal',
+    name: '个人IP Personal',
+    colorName: 'blue',
+    badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+    bgLightClass: 'bg-blue-50',
+    activeClass: 'bg-blue-600 text-white border-blue-600 shadow-xs',
+    borderClass: 'border-blue-200',
+    textClass: 'text-blue-700',
+    dotClass: 'bg-blue-500'
+  },
+  'Review Needed': {
+    id: 'Review Needed',
+    name: '待复审 Review Needed',
+    colorName: 'rose',
+    badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+    bgLightClass: 'bg-rose-50',
+    activeClass: 'bg-rose-600 text-white border-rose-600 shadow-xs',
+    borderClass: 'border-rose-200',
+    textClass: 'text-rose-700',
+    dotClass: 'bg-rose-500'
+  }
+};
+
+export const PRESET_TAG_KEYS: PresetDraftTag[] = [
+  'Inspiration',
+  'Commercial',
+  'Personal',
+  'Review Needed'
+];
+
+export function getTagMeta(tag: string): TagMeta {
+  if (tag in PRESET_DRAFT_TAGS) {
+    return PRESET_DRAFT_TAGS[tag as PresetDraftTag];
+  }
+  return {
+    id: tag,
+    name: tag,
+    colorName: 'slate',
+    badgeClass: 'bg-slate-100 text-slate-700 border-slate-200',
+    bgLightClass: 'bg-slate-100',
+    activeClass: 'bg-slate-700 text-white border-slate-700',
+    borderClass: 'border-slate-200',
+    textClass: 'text-slate-700',
+    dotClass: 'bg-slate-500'
+  };
+}
+
+export function toggleDraftTag(currentTags: string[] | undefined, tagToToggle: string): string[] {
+  const trimmed = tagToToggle.trim();
+  if (!trimmed) return currentTags || [];
+  const list = currentTags ? [...currentTags] : [];
+  const index = list.indexOf(trimmed);
+  if (index >= 0) {
+    list.splice(index, 1);
+  } else {
+    list.push(trimmed);
+  }
+  return list;
+}
+
+export function filterDraftsByTag<T extends { tags?: string[] }>(
+  drafts: T[],
+  tagFilter: string | 'all'
+): T[] {
+  if (!tagFilter || tagFilter === 'all') {
+    return drafts;
+  }
+  return drafts.filter(d => Array.isArray(d.tags) && d.tags.includes(tagFilter));
+}
+
+export function getDraftTagCounts<T extends { tags?: string[] }>(drafts: T[]): Record<string, number> {
+  const counts: Record<string, number> = {
+    all: drafts.length,
+    'Inspiration': 0,
+    'Commercial': 0,
+    'Personal': 0,
+    'Review Needed': 0
+  };
+
+  for (const draft of drafts) {
+    if (Array.isArray(draft.tags)) {
+      for (const tag of draft.tags) {
+        counts[tag] = (counts[tag] || 0) + 1;
+      }
+    }
+  }
+
+  return counts;
+}
